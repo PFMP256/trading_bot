@@ -1,0 +1,13 @@
+version: '3'
+
+services:
+  trading-bot:
+    build: .
+    container_name: btc-trading-bot
+    restart: unless-stopped
+    volumes:
+      - ./.env:/app/.env
+    environment:
+      - TZ=UTC
+    # Para usar la herramienta de visualización, descomentar la siguiente línea
+    # command: python visualize_strategy.py 
