@@ -119,6 +119,12 @@ def test_buy_sell_signals(bot, df):
 def test_order_execution_simulation(bot):
     """Simular la ejecución de órdenes sin realizar operaciones reales."""
     logger.info("Simulando ejecución de órdenes (sin operaciones reales)...")
+    
+    # Variables para rastrear errores
+    errors_detected = False
+    error_messages = []
+    credential_errors = False
+    
     try:
         # Guardar el método original de creación de órdenes
         original_create_market_buy = bot.exchange.create_market_buy_order
@@ -146,13 +152,35 @@ def test_order_execution_simulation(bot):
         # Prueba de compra
         logger.info("Simulando compra...")
         bot.in_position = False
-        bot.execute_buy()
+        try:
+            bot.execute_buy()
+        except Exception as e:
+            errors_detected = True
+            error_message = f"Error en la simulación de compra: {str(e)}"
+            error_messages.append(error_message)
+            logger.error(error_message)
+            
+            # Verificar si el error está relacionado con las credenciales
+            if any(word in str(e).lower() for word in ["password", "api", "credential", "key", "secret", "requires"]):
+                credential_errors = True
+                logger.critical("❌ ERROR CRÍTICO: Error de credenciales detectado en la compra simulada")
         
         # Prueba de venta
         logger.info("Simulando venta...")
         bot.in_position = True
         bot.position_size = 0.001  # Simular una pequeña cantidad
-        bot.execute_sell()
+        try:
+            bot.execute_sell()
+        except Exception as e:
+            errors_detected = True
+            error_message = f"Error en la simulación de venta: {str(e)}"
+            error_messages.append(error_message)
+            logger.error(error_message)
+            
+            # Verificar si el error está relacionado con las credenciales
+            if any(word in str(e).lower() for word in ["password", "api", "credential", "key", "secret", "requires"]):
+                credential_errors = True
+                logger.critical("❌ ERROR CRÍTICO: Error de credenciales detectado en la venta simulada")
         
         # Restaurar métodos originales
         bot.exchange.create_market_buy_order = original_create_market_buy
@@ -164,8 +192,18 @@ def test_order_execution_simulation(bot):
         bot.position_size = original_position_size
         bot.daily_trades = original_daily_trades
         
-        logger.info("✅ Simulación de órdenes completada")
-        return True
+        # Verificar si hubo errores de credenciales
+        if credential_errors:
+            logger.critical("❌ ERROR CRÍTICO DE CREDENCIALES: El bot no debe iniciarse hasta resolver los problemas de credenciales")
+            return False
+            
+        # Verificar si hubo otros errores
+        if errors_detected and not credential_errors:
+            logger.error(f"❌ Errores en simulación de órdenes: {'; '.join(error_messages)}")
+            return False
+        else:
+            logger.info("✅ Simulación de órdenes completada sin errores")
+            return True
     except Exception as e:
         logger.error(f"❌ Error en simulación de órdenes: {str(e)}")
         return False
