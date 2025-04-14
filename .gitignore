@@ -1,2 +1,6 @@
 .env
 venv/
+nohup.out
+__pycache__/main.cpython-312.pyc
+btc_day_trading_bot.log
+test_bot.log

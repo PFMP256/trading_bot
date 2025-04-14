@@ -41,14 +41,15 @@ class BTCDayTrader:
         # Configuración de la API del exchange
         self.api_key = os.getenv('API_KEY')
         self.api_secret = os.getenv('API_SECRET')
-        self.exchange_id = os.getenv('EXCHANGE_ID', 'bitget')  # Binance por defecto
+        self.api_password = os.getenv('API_PASSWORD')  # Password requerido por Bitget
+        self.exchange_id = os.getenv('EXCHANGE_ID', 'bitget')  # Bitget por defecto
         
         # Configuración de trading
         self.symbol = 'BTC/USDT'
         self.timeframe = '15m'  # Marco de tiempo para el análisis
-        self.risk_per_trade = float(os.getenv('RISK_PER_TRADE', 0.02))  # 2% por defecto
+        self.risk_per_trade = float(os.getenv('RISK_PER_TRADE', 0.05))  # 5% por defecto
         self.max_daily_trades = int(os.getenv('MAX_DAILY_TRADES', 3))
-        self.leverage = float(os.getenv('LEVERAGE', 1.0))  # Sin apalancamiento por defecto
+        self.leverage = float(os.getenv('LEVERAGE', 3.0))  # Con apalancamiento por 3 por defecto
         
         # Límites de ganancia y pérdida
         self.take_profit_pct = float(os.getenv('TAKE_PROFIT_PCT', 0.03))  # 3% por defecto
@@ -70,14 +71,20 @@ class BTCDayTrader:
         """Inicializar la conexión con el exchange."""
         try:
             exchange_class = getattr(ccxt, self.exchange_id)
-            self.exchange = exchange_class({
+            exchange_config = {
                 'apiKey': self.api_key,
                 'secret': self.api_secret,
                 'enableRateLimit': True,
                 'options': {
                     'defaultType': 'spot',  # Tipo de mercado: spot
                 }
-            })
+            }
+            
+            # Añadir password si estamos usando Bitget
+            if self.exchange_id.lower() == 'bitget' and self.api_password:
+                exchange_config['password'] = self.api_password
+            
+            self.exchange = exchange_class(exchange_config)
             logger.info(f"Conexión con {self.exchange_id} establecida.")
         except Exception as e:
             logger.error(f"Error al inicializar exchange: {str(e)}")
@@ -327,16 +334,6 @@ class BTCDayTrader:
         # Resetear contadores si es un nuevo día
         self.reset_daily_counters()
         
-        # Verificar si estamos en horario de trading (9:00-20:00 UTC)
-        current_hour = datetime.datetime.utcnow().hour
-        if not (9 <= current_hour < 20):
-            if self.in_position:
-                logger.info("Fuera de horario de trading. Cerrando posiciones...")
-                self.close_all_positions()
-            else:
-                logger.info("Fuera de horario de trading. Esperando...")
-            return
-        
         # Obtener datos y añadir indicadores
         df = self.fetch_ohlcv_data(limit=100)
         df = self.add_indicators(df)
@@ -360,9 +357,6 @@ class BTCDayTrader:
     def run(self):
         """Iniciar el bot de trading."""
         logger.info("Iniciando bot de trading...")
-        
-        # Programar cierre de posiciones al final del día (19:55 UTC)
-        schedule.every().day.at("19:55").do(self.close_all_positions)
         
         # Programar reseteo de contadores a medianoche UTC
         schedule.every().day.at("00:01").do(self.reset_daily_counters)
@@ -395,4 +389,4 @@ if __name__ == "__main__":
         bot = BTCDayTrader()
         bot.run()
     except Exception as e:
-        logger.critical(f"Error fatal al iniciar el bot: {str(e)}") 
+        logger.critical(f"Error fatal al iniciar el bot: {str(e)}")

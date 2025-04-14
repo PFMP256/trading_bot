@@ -327,6 +327,7 @@ if __name__ == "__main__":
         logger.warning("No se encontraron credenciales API. Usando valores de prueba.")
         os.environ['API_KEY'] = 'test_api_key'
         os.environ['API_SECRET'] = 'test_api_secret'
+        os.environ['API_PASSWORD'] = 'test_api_password'  # Agregar password para Bitget
     
     # Ejecutar todas las pruebas
     run_all_tests()
