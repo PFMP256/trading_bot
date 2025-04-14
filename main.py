@@ -266,26 +266,74 @@ class BTCDayTrader:
         try:
             # Obtener el balance disponible
             balance = self.exchange.fetch_balance()
-            usdt_balance = balance['USDT']['free'] if 'USDT' in balance else 0
+            
+            # Depuración del balance
+            logger.info(f"Balance obtenido. Claves disponibles: {list(balance.keys())}")
+            
+            # Verificar si 'USDT' está en el balance y tiene la estructura esperada
+            if 'USDT' in balance:
+                usdt_balance = balance['USDT']['free']
+                logger.info(f"Balance USDT detectado: {usdt_balance}")
+            else:
+                logger.warning(f"'USDT' no encontrado en el balance convencional.")
+                # Intentar encontrar USDT en una estructura alternativa
+                if 'total' in balance and 'USDT' in balance['total']:
+                    usdt_balance = balance['total']['USDT']
+                    logger.info(f"Balance USDT encontrado en estructura alternativa: {usdt_balance}")
+                else:
+                    usdt_balance = 0
+                    logger.error("No se pudo encontrar balance de USDT disponible.")
+            
+            # Si el balance es 0, no continuar
+            if usdt_balance <= 0:
+                logger.warning("No se ejecutó orden de compra: Balance USDT es 0 o negativo.")
+                return
             
             # Obtener el precio actual
             ticker = self.exchange.fetch_ticker(self.symbol)
             current_price = ticker['last']
+            logger.info(f"Precio actual de BTC: {current_price} USDT")
             
             # Calcular el tamaño de la posición basado en el riesgo por operación
             risk_amount = usdt_balance * self.risk_per_trade
+            logger.info(f"Monto de riesgo calculado: {risk_amount} USDT (balance {usdt_balance} * riesgo {self.risk_per_trade})")
+            
             # Ajustar por apalancamiento si se está usando
             position_size_usd = risk_amount * self.leverage
+            logger.info(f"Tamaño de posición calculado: {position_size_usd} USDT (riesgo {risk_amount} * apalancamiento {self.leverage})")
+            
+            # Establecer un tamaño mínimo de posición fijo si el balance es suficiente
+            min_position_size = 10.0  # Mínimo 10 USDT
+            
+            if position_size_usd < min_position_size:
+                if usdt_balance >= min_position_size:
+                    position_size_usd = min_position_size
+                    logger.info(f"Ajustando al tamaño mínimo de posición: {min_position_size} USDT")
+                else:
+                    logger.warning(f"No se puede establecer posición mínima. Balance insuficiente: {usdt_balance} USDT")
+            
+            # Verificar que el precio sea mayor que cero para evitar división por cero
+            if current_price <= 0:
+                logger.error(f"Precio actual es cero o negativo: {current_price}")
+                return
+            
+            # Calcular cantidad en BTC
             position_size_btc = position_size_usd / current_price
             
             # Redondear a 6 decimales (ajustar según los requisitos del exchange)
             position_size_btc = round(position_size_btc, 6)
+            logger.info(f"Tamaño de posición en BTC calculado: {position_size_btc} (valor aproximado: {position_size_btc * current_price:.2f} USDT)")
             
+            if position_size_btc <= 0:
+                logger.warning(f"No se ejecutó orden de compra: Tamaño de posición calculado es cero o negativo: {position_size_btc} BTC")
+                return
+                
             if position_size_btc * current_price < 10:  # Verificar mínimo (por ejemplo, 10 USDT)
                 logger.warning(f"No se ejecutó orden de compra: Tamaño de posición demasiado pequeño: {position_size_btc * current_price:.2f} USDT (mínimo 10 USDT)")
                 return
             
             # Ejecutar la orden de mercado
+            logger.info(f"Ejecutando compra de {position_size_btc} BTC a ~{current_price} USDT (valor aproximado: {position_size_btc * current_price:.2f} USDT)")
             order = self.exchange.create_market_buy_order(
                 symbol=self.symbol,
                 amount=position_size_btc
@@ -303,6 +351,9 @@ class BTCDayTrader:
             
         except Exception as e:
             logger.error(f"Error al ejecutar compra: {str(e)}")
+            # Añadir más detalles del error para depuración
+            import traceback
+            logger.error(f"Detalles del error: {traceback.format_exc()}")
     
     def execute_sell(self):
         """Ejecutar una orden de venta."""
