@@ -217,14 +217,50 @@ class BTCDayTrader:
         
         return False
     
+    def run_trading_cycle(self):
+        """Ejecutar un ciclo de trading."""
+        logger.info("Iniciando ciclo de trading...")
+        
+        # Resetear contadores si es un nuevo día
+        self.reset_daily_counters()
+        
+        # Obtener datos y añadir indicadores
+        df = self.fetch_ohlcv_data(limit=100)
+        df = self.add_indicators(df)
+        
+        if df is None or df.empty:
+            logger.warning("No se ejecutaron órdenes: No se pudieron obtener datos válidos del mercado.")
+            return
+        
+        # Si estamos en posición, verificar señales de venta
+        if self.in_position:
+            if self.check_sell_signals(df):
+                self.execute_sell()
+            else:
+                logger.info(f"No se ejecutó orden de venta: No se detectaron señales de venta. Precio actual: {df['close'].iloc[-1]}, Precio de entrada: {self.entry_price}")
+                logger.info(f"Take profit en: {self.entry_price * (1 + self.take_profit_pct):.2f}, Stop loss en: {self.entry_price * (1 - self.stop_loss_pct):.2f}")
+        # Si no estamos en posición y no hemos alcanzado el máximo de operaciones diarias,
+        # verificar señales de compra
+        elif self.daily_trades < self.max_daily_trades:
+            if self.check_buy_signals(df):
+                self.execute_buy()
+            else:
+                last_row = df.iloc[-1]
+                logger.info(f"No se ejecutó orden de compra: No se detectaron señales de compra válidas.")
+                logger.info(f"Valores actuales - EMA20: {last_row['ema20']:.2f}, EMA50: {last_row['ema50']:.2f}, RSI: {last_row['rsi']:.2f}, MACD: {last_row['macd']:.5f}/{last_row['macd_signal']:.5f}")
+        else:
+            logger.info(f"No se ejecutó orden de compra: Se alcanzó el límite máximo de operaciones diarias ({self.max_daily_trades}).")
+        
+        logger.info(f"Ciclo de trading completado. Operaciones hoy: {self.daily_trades}/{self.max_daily_trades}")
+
     def execute_buy(self):
         """Ejecutar una orden de compra."""
         if self.in_position:
-            logger.info("Ya hay una posición abierta. No se puede comprar.")
+            logger.info("No se ejecutó orden de compra: Ya hay una posición abierta.")
             return
         
         if self.daily_trades >= self.max_daily_trades:
-            logger.info(f"Se alcanzó el máximo de operaciones diarias ({self.max_daily_trades}).")
+            logger.info(f"No se ejecutó orden de compra: Se alcanzó el máximo de operaciones diarias ({self.max_daily_trades}).")
             return
         
         try:
@@ -246,7 +282,7 @@ class BTCDayTrader:
             position_size_btc = round(position_size_btc, 6)
             
             if position_size_btc * current_price < 10:  # Verificar mínimo (por ejemplo, 10 USDT)
-                logger.warning(f"Tamaño de posición demasiado pequeño: {position_size_btc * current_price} USDT")
+                logger.warning(f"No se ejecutó orden de compra: Tamaño de posición demasiado pequeño: {position_size_btc * current_price:.2f} USDT (mínimo 10 USDT)")
                 return
             
             # Ejecutar la orden de mercado
@@ -271,7 +307,7 @@ class BTCDayTrader:
     def execute_sell(self):
         """Ejecutar una orden de venta."""
         if not self.in_position:
-            logger.info("No hay posición abierta. No se puede vender.")
+            logger.info("No se ejecutó orden de venta: No hay posición abierta.")
             return
         
         try:
@@ -283,7 +319,7 @@ class BTCDayTrader:
             sell_amount = min(self.position_size, btc_balance)
             
             if sell_amount <= 0:
-                logger.warning("No hay BTC disponible para vender.")
+                logger.warning("No se ejecutó orden de venta: No hay BTC disponible (saldo: 0).")
                 return
             
             # Ejecutar la orden de mercado
@@ -326,33 +362,6 @@ class BTCDayTrader:
             self.daily_trades = 0
             self.last_trade_date = today
             logger.info("Contadores diarios reseteados.")
-    
-    def run_trading_cycle(self):
-        """Ejecutar un ciclo de trading."""
-        logger.info("Iniciando ciclo de trading...")
-        
-        # Resetear contadores si es un nuevo día
-        self.reset_daily_counters()
-        
-        # Obtener datos y añadir indicadores
-        df = self.fetch_ohlcv_data(limit=100)
-        df = self.add_indicators(df)
-        
-        if df is None or df.empty:
-            logger.warning("No se pudieron obtener datos válidos.")
-            return
-        
-        # Si estamos en posición, verificar señales de venta
-        if self.in_position:
-            if self.check_sell_signals(df):
-                self.execute_sell()
-        # Si no estamos en posición y no hemos alcanzado el máximo de operaciones diarias,
-        # verificar señales de compra
-        elif self.daily_trades < self.max_daily_trades:
-            if self.check_buy_signals(df):
-                self.execute_buy()
-        
-        logger.info(f"Ciclo de trading completado. Operaciones hoy: {self.daily_trades}/{self.max_daily_trades}")
     
     def run(self):
         """Iniciar el bot de trading."""
