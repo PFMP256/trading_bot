@@ -77,6 +77,7 @@ class BTCDayTrader:
                 'enableRateLimit': True,
                 'options': {
                     'defaultType': 'spot',  # Tipo de mercado: spot
+                    'createMarketBuyOrderRequiresPrice': False  # Permitir órdenes de compra por monto total
                 }
             }
             
@@ -317,26 +318,20 @@ class BTCDayTrader:
                 logger.error(f"Precio actual es cero o negativo: {current_price}")
                 return
             
-            # Calcular cantidad en BTC
+            # Calcular cantidad en BTC (para registro interno)
             position_size_btc = position_size_usd / current_price
-            
-            # Redondear a 6 decimales (ajustar según los requisitos del exchange)
             position_size_btc = round(position_size_btc, 6)
-            logger.info(f"Tamaño de posición en BTC calculado: {position_size_btc} (valor aproximado: {position_size_btc * current_price:.2f} USDT)")
             
-            if position_size_btc <= 0:
-                logger.warning(f"No se ejecutó orden de compra: Tamaño de posición calculado es cero o negativo: {position_size_btc} BTC")
-                return
-                
-            if position_size_btc * current_price < 10:  # Verificar mínimo (por ejemplo, 10 USDT)
-                logger.warning(f"No se ejecutó orden de compra: Tamaño de posición demasiado pequeño: {position_size_btc * current_price:.2f} USDT (mínimo 10 USDT)")
+            if position_size_usd < 10:  # Verificar mínimo (por ejemplo, 10 USDT)
+                logger.warning(f"No se ejecutó orden de compra: Tamaño de posición demasiado pequeño: {position_size_usd:.2f} USDT (mínimo 10 USDT)")
                 return
             
-            # Ejecutar la orden de mercado
-            logger.info(f"Ejecutando compra de {position_size_btc} BTC a ~{current_price} USDT (valor aproximado: {position_size_btc * current_price:.2f} USDT)")
+            # Ejecutar la orden de mercado pasando el monto total en USDT directamente como 'amount'
+            # en lugar de la cantidad en BTC
+            logger.info(f"Ejecutando compra por {position_size_usd:.2f} USDT a precio ~{current_price} USDT (cantidad aproximada: {position_size_btc} BTC)")
             order = self.exchange.create_market_buy_order(
                 symbol=self.symbol,
-                amount=position_size_btc
+                amount=position_size_usd  # Pasar directamente el monto en USDT
             )
             
             # Actualizar el estado
@@ -346,7 +341,7 @@ class BTCDayTrader:
             self.daily_trades += 1
             self.last_trade_date = datetime.date.today()
             
-            logger.info(f"Compra ejecutada: {position_size_btc} BTC a {current_price} USDT")
+            logger.info(f"Compra ejecutada por {position_size_usd:.2f} USDT a {current_price} USDT (cantidad aproximada: {position_size_btc} BTC)")
             logger.info(f"Detalles de la orden: {order}")
             
         except Exception as e:
